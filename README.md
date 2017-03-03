@@ -50,11 +50,11 @@ end
 
 #   Author
 
-Wu Yipu (ÎâÒåÆ×) <pengsven@gmail.com>
+Wu Yipu (å´ä¹‰è°±) <pengsven@gmail.com>
 
 #   Copyright and License
 
 The MIT License (MIT)
 
-Copyright (c) 2017 Wu Yipu (ÎâÒåÆ×) <pengsven@gmail.com>
+Copyright (c) 2017 Wu Yipu (å´ä¹‰è°±) <pengsven@gmail.com>
 
