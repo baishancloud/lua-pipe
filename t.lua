@@ -1,22 +1,3 @@
-#   Name
-
-lua-pipe
-
-#   Status
-
-This library is in alpha phase.
-
-It is deployed in a test envinroment, after add completely test case,
-production environment in the movement
-
-#   Description
-
-Lua implementation data stream N input and M output piping
-
-#   Synopsis
-
-```lua
-
 local pipe_pipe   = require("cpipe.pipe")
 local pipe_reader = require("cpipe.reader")
 local pipe_writer = require("cpipe.writer")
@@ -44,17 +25,3 @@ local rst, err_code, err_msg = cpipe:pipe(is_running)
 if err_code ~= nil then
     return nil, err_code, err_msg
 end
-
-```
-# modules
-
-#   Author
-
-Wu Yipu (Œ‚“Â∆◊) <pengsven@gmail.com>
-
-#   Copyright and License
-
-The MIT License (MIT)
-
-Copyright (c) 2017 Wu Yipu (Œ‚“Â∆◊) <pengsven@gmail.com>
-
