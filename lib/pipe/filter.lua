@@ -1,7 +1,6 @@
 local strutil = require("acid.strutil")
 
 local _M = { _VERSION = '1.0' }
-local mt = { __index = _M }
 
 local to_str = strutil.to_str
 

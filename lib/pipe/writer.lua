@@ -2,7 +2,6 @@ local s2http = require("s2http")
 local tableutil = require("acid.tableutil")
 
 local _M = { _VERSION = '1.0' }
-local mt = { __index = _M }
 
 local BLOCK_SIZE = 1024 * 1024
 local SOCKET_TIMEOUT = 100 * 1000

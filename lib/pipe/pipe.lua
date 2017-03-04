@@ -33,6 +33,10 @@ local function spawn_coroutines(functions)
     local cos = {}
 
     for ident, func in ipairs(functions) do
+        if type(func) ~= 'function' then
+            return nil, 'InvalidArgs', 'reader or wrier is not executable'
+        end
+
         table.insert(cos, {
             ident     = ident,
             func      = func,
@@ -151,18 +155,28 @@ function _M.new(_, rds, wrts, filter)
         return nil, 'InvalidArgs', 'reader or writer cant be empty'
     end
 
+    local rd_cos, err_code, err_msg = spawn_coroutines(rds)
+    if err_code ~= nil then
+        return nil, err_code, err_msg
+    end
+
+    local wrt_cos, err_code, err_msg = spawn_coroutines(wrts)
+    if err_code ~= nil then
+        return nil, err_code, err_msg
+    end
+
     local obj = {
         n_rd  = #rds,
         n_wrt = #wrts,
+
+        rd_cos  = rd_cos,
+        wrt_cos = wrt_cos,
 
         rbufs = {},
         wbufs = {},
 
         filter = filter or pipe_filter.copy_filter,
     }
-
-    obj.rd_cos  = spawn_coroutines(rds)
-    obj.wrt_cos = spawn_coroutines(wrts)
 
     return setmetatable(obj, mt)
 end
