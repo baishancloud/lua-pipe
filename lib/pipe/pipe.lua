@@ -2,9 +2,15 @@ local strutil = require("acid.strutil")
 local tableutil = require("acid.tableutil")
 local semaphore = require("ngx.semaphore")
 local pipe_filter = require("pipe.filter")
+local pipe_reader = require("pipe.reader")
+local pipe_writer = require("pipe.writer")
 
 local _M = { _VERSION = '1.0' }
 local mt = { __index = _M }
+
+_M.reader = pipe_reader
+_M.writer = pipe_writer
+_M.filter = pipe_filter
 
 local to_str = strutil.to_str
 local SEMAPHORE_TIMEOUT = 300 --seconds
@@ -150,7 +156,20 @@ local function wait_co_sema(cos, sema)
     end
 end
 
-function _M.new(_, rds, wrts, filter)
+local function run_filters(self, filters)
+    local pipe_rst = get_pipe_result(self)
+
+    for _, filter in ipairs(filters) do
+        local rst, err_code, err_msg = filter(self.rbufs, self.n_rd,
+            self.wbufs, self.n_wrt, pipe_rst)
+
+        if err_code ~= nil then
+            return rst, err_code, err_msg
+        end
+    end
+end
+
+function _M.new(_, rds, wrts, filters)
     if #rds == 0 or #wrts == 0 then
         return nil, 'InvalidArgs', 'reader or writer cant be empty'
     end
@@ -175,7 +194,7 @@ function _M.new(_, rds, wrts, filter)
         rbufs = {},
         wbufs = {},
 
-        filter = filter or pipe_filter.copy_filter,
+        filters = filters or {pipe_filter.copy_filter},
     }
 
     return setmetatable(obj, mt)
@@ -227,8 +246,7 @@ function _M.pipe(self, is_running)
         post_co_sema(self.rd_cos, 'sema_buf_ready')
         wait_co_sema(self.rd_cos, 'sema_buf_filled')
 
-        local rst, err_code, err_msg = self.filter(self.rbufs, self.n_rd,
-            self.wbufs, self.n_wrt, get_pipe_result(self))
+        local rst, err_code, err_msg = run_filters(self, self.filters)
         if err_code ~= nil then
             kill_coroutines(self.rd_cos, self.wrt_cos)
 
