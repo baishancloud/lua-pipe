@@ -184,6 +184,8 @@ function _M.new(_, rds, wrts, filters)
         return nil, err_code, err_msg
     end
 
+    filters = filters or {}
+
     local obj = {
         n_rd  = #rds,
         n_wrt = #wrts,
@@ -194,7 +196,9 @@ function _M.new(_, rds, wrts, filters)
         rbufs = {},
         wbufs = {},
 
-        filters = filters or {pipe_filter.copy_filter},
+        rd_filters  = filters.rd_filters or {pipe_filter.copy_filter},
+        wrt_filters = filters.wrt_filters
+            or {pipe_filter.make_write_quorum_filter(#wrts)},
     }
 
     return setmetatable(obj, mt)
@@ -246,7 +250,7 @@ function _M.pipe(self, is_running)
         post_co_sema(self.rd_cos, 'sema_buf_ready')
         wait_co_sema(self.rd_cos, 'sema_buf_filled')
 
-        local rst, err_code, err_msg = run_filters(self, self.filters)
+        local rst, err_code, err_msg = run_filters(self, self.rd_filters)
         if err_code ~= nil then
             kill_coroutines(self.rd_cos, self.wrt_cos)
 
@@ -265,6 +269,11 @@ function _M.pipe(self, is_running)
 
         post_co_sema(self.wrt_cos, 'sema_buf_filled')
         wait_co_sema(self.wrt_cos, 'sema_buf_ready')
+
+        local _, err_code, err_msg = run_filters(self, self.wrt_filters)
+        if err_code ~= nil then
+            return nil, err_code, err_msg
+        end
     end
 
     wait_co_sema(self.wrt_cos, 'sema_dead')
