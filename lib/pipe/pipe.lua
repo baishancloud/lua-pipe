@@ -272,6 +272,7 @@ function _M.pipe(self, is_running)
 
         local _, err_code, err_msg = run_filters(self, self.wrt_filters)
         if err_code ~= nil then
+            kill_coroutines(self.rd_cos, self.wrt_cos)
             return nil, err_code, err_msg
         end
     end
