@@ -136,16 +136,16 @@ local function is_read_eof(self)
     return true
 end
 
-local function post_co_sema(cos, sema)
+local function post_co_sema(self, cos, sema)
     for i, co in ipairs(cos) do
         co[sema]:post(1)
     end
 end
 
-local function wait_co_sema(cos, sema)
+local function wait_co_sema(self, cos, sema)
     for i, co in ipairs(cos) do
         if not co.is_dead then
-            local ok, err = co[sema]:wait(SEMAPHORE_TIMEOUT)
+            local ok, err = co[sema]:wait(self.sem_timeout)
             if err then
                 co.err = {
                     err_code = 'SemaphoreError',
@@ -169,7 +169,7 @@ local function run_filters(self, filters)
     end
 end
 
-function _M.new(_, rds, wrts, filters)
+function _M.new(_, rds, wrts, filters, sem_timeout)
     if #rds == 0 or #wrts == 0 then
         return nil, 'InvalidArgs', 'reader or writer cant be empty'
     end
@@ -199,6 +199,8 @@ function _M.new(_, rds, wrts, filters)
         rd_filters  = filters.rd_filters or {pipe_filter.copy_filter},
         wrt_filters = filters.wrt_filters
             or {pipe_filter.make_write_quorum_filter(#wrts)},
+
+        sem_timeout = sem_timeout or SEMAPHORE_TIMEOUT,
     }
 
     return setmetatable(obj, mt)
@@ -207,7 +209,7 @@ end
 function _M.write_pipe(pobj, ident, buf)
     local rd_co = pobj.rd_cos[ident]
 
-    local ok, err = rd_co.sema_buf_ready:wait(SEMAPHORE_TIMEOUT)
+    local ok, err = rd_co.sema_buf_ready:wait(pobj.sem_timeout)
     if err then
         return nil, 'SemaphoreError', 'wait buffer ready sempahore:' .. err
     end
@@ -224,7 +226,7 @@ end
 function _M.read_pipe(pobj, ident)
     local wrt_co = pobj.wrt_cos[ident]
 
-    local ok, err = wrt_co.sema_buf_filled:wait(SEMAPHORE_TIMEOUT)
+    local ok, err = wrt_co.sema_buf_filled:wait(pobj.sem_timeout)
     if err then
         return nil, 'SemaphoreError', err
     end
@@ -247,8 +249,8 @@ function _M.pipe(self, is_running)
         end
 
         set_nil(self.rbufs, self.n_rd)
-        post_co_sema(self.rd_cos, 'sema_buf_ready')
-        wait_co_sema(self.rd_cos, 'sema_buf_filled')
+        post_co_sema(self, self.rd_cos, 'sema_buf_ready')
+        wait_co_sema(self, self.rd_cos, 'sema_buf_filled')
 
         local rst, err_code, err_msg = run_filters(self, self.rd_filters)
         if err_code ~= nil then
@@ -267,8 +269,8 @@ function _M.pipe(self, is_running)
             return nil, 'PipeError', 'to write data can not be nil'
         end
 
-        post_co_sema(self.wrt_cos, 'sema_buf_filled')
-        wait_co_sema(self.wrt_cos, 'sema_buf_ready')
+        post_co_sema(self, self.wrt_cos, 'sema_buf_filled')
+        wait_co_sema(self, self.wrt_cos, 'sema_buf_ready')
 
         local _, err_code, err_msg = run_filters(self, self.wrt_filters)
         if err_code ~= nil then
@@ -277,7 +279,7 @@ function _M.pipe(self, is_running)
         end
     end
 
-    wait_co_sema(self.wrt_cos, 'sema_dead')
+    wait_co_sema(self, self.wrt_cos, 'sema_dead')
     kill_coroutines(self.rd_cos, self.wrt_cos)
 
     return get_pipe_result(self)
