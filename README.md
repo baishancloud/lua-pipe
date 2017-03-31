@@ -17,14 +17,12 @@ Lua implementation data stream N input and M output piping
 
 ```lua
 
-local pipe_pipe   = require("cpipe.pipe")
-local pipe_reader = require("cpipe.reader")
-local pipe_writer = require("cpipe.writer")
+local pipe_pipe = require("pipe.pipe")
 
 local headers  = ngx.req.get_headers()
 local size = tonumber(headers['Content-Length'])
 
-local socket_reader = pipe_reader.make_socket_reader(ngx.socket.tcp(), size)
+local socket_reader = pipe_pipe.reader.make_socket_reader(ngx.socket.tcp(), size)
 
 local writers = {}
 for _, fpath in ipairs({
@@ -32,7 +30,7 @@ for _, fpath in ipairs({
     '/tmp/t2.out',
     '/tmp/t3.out'}) do
 
-    local file_writer = pipe_writer.make_file_writer(fpath)
+    local file_writer = pipe_pipe.writer.make_file_writer(fpath)
     table.insert(writers, file_writer)
 end
 
