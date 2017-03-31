@@ -1,4 +1,8 @@
 local pipe_pipe = require("pipe.pipe")
+local util = require('pipe.t.util')
+local resty_md5 = require("resty.md5")
+local resty_string = require("resty.string")
+
 local _M = {}
 
 local is_running = function()
@@ -58,6 +62,90 @@ local function make_check_err_filter(r_or_w, ident, expect_err, return_err)
                 'expected: ' .. tostring(expect_err) .. ', actual:'.. tostring(err_code)
         end
     end
+end
+
+local function make_calc_md5_filter(rst)
+    local md5 = resty_md5:new()
+    if not md5 then
+        return nil, 'Md5Error', "failed to create md5 object"
+    end
+
+    return function(rbufs, n_rd, wbufs, n_wrt, pipe_rst)
+        for i = 1, n_wrt, 1 do
+            wbufs[i] = rbufs[1]
+        end
+
+       if rbufs[1] == nil then
+           return nil, 'ReadError', 'read bufs is nil'
+       end
+
+       if rbufs[1] == '' then
+            local digest = md5:final()
+            rst[1] = resty_string.to_hex(digest)
+        end
+
+        local ok = md5:update(rbufs[1])
+        if not ok then
+            return nil, 'Md5Error', 'failed to add data'
+        end
+    end
+end
+
+function _M.test_pipe_http_reader()
+    local wrt_files = {
+        '/tmp/t1.out',
+        '/tmp/t2.out',
+        '/tmp/t3.out',
+    }
+
+    local writers = {}
+
+    for _, fpath in ipairs(wrt_files) do
+        local file_writer = pipe_pipe.writer.make_file_writer(fpath)
+        table.insert(writers, file_writer)
+    end
+
+    local domain = 'www.lua.org'
+    local ips, err_code, err_msg = util.get_ips_from_domain(domain)
+    if err_code ~= nil then
+        return nil, err_code, err_msg
+    end
+
+    local uri = '/ftp/lua-5.3.4.tar.gz'
+    local rd_opts = {headers={Host=domain}}
+
+    local http_reader = pipe_pipe.reader.make_http_reader(ips, 80, 'GET',uri, rd_opts)
+
+    local md5_rst = {}
+    local md5_filter = make_calc_md5_filter(md5_rst)
+
+    local cpipe, err_code, err_msg = pipe_pipe:new(
+        {http_reader}, writers, {rd_filters={md5_filter}}, 30)
+    if err_code ~= nil then
+        util.rm_files(unpack(wrt_files))
+        return nil, err_code, err_msg
+    end
+
+    local rst, err_code, err_msg = cpipe:pipe(is_running)
+    if err_code ~= nil then
+        util.rm_files(unpack(wrt_files))
+        return rst, err_code, err_msg
+    end
+
+    for _, fpath in ipairs( wrt_files ) do
+        local t1_md5_val, err_code, err_msg = util.get_file_md5(fpath)
+        if err_code ~= nil then
+            util.rm_files(unpack(wrt_files))
+            return nil, err_code, err_msg
+        end
+
+        if t1_md5_val ~= md5_rst[1] then
+            util.rm_files(unpack(wrt_files))
+            return nil, 'Md5Error', 'not equal'
+        end
+    end
+
+    util.rm_files(unpack(wrt_files))
 end
 
 function _M.test_pipe_args()
