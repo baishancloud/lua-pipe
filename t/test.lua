@@ -294,6 +294,61 @@ function _M.test_pipe_not_enough_quorum()
     end
 end
 
+
+function _M.test_pipe_file_reader_buffer_writer()
+    local data_src = '/dev/urandom'
+
+    local fp, err_msg = io.open(data_src, 'r')
+    if fp == nil then
+        return nil, 'FileError', err_msg
+    end
+
+    local data = fp:read(1024 + 512)
+    if data == nil then
+        fp:close()
+        return nil, 'FileError', 'can not read data'
+    end
+
+    fp:close()
+
+    local fpath = string.format('/tmp/%d', ngx.time())
+    fp, err_msg = io.open(fpath, 'w')
+    if fp == nil then
+        return nil, 'FileError', err_msg
+    end
+
+    fp:write(data)
+    fp:close()
+
+    local buffer = {}
+    local reader = pipe_pipe.reader.make_file_reader(fpath, 1024)
+    local writer = pipe_pipe.writer.make_buffer_writer(buffer)
+
+    local cpipe, err_code, err_msg = pipe_pipe:new({reader}, {writer})
+    if err_code ~= nil then
+        os.remove(fpath)
+        return nil, err_code, err_msg
+    end
+
+    local rst, err_code, err_msg = cpipe:pipe(is_running)
+    if err_code ~= nil then
+        os.remove(fpath)
+        return rst, err_code, err_msg
+    end
+
+    os.remove(fpath)
+
+    local data_sha1 = ngx.sha1_bin(data)
+    local pipe_sha1 = ngx.sha1_bin(buffer.buf)
+
+    if data_sha1 ~= pipe_sha1 then
+        return nil, 'ReadWriteError', 'data not the same'
+    end
+
+    ngx.log(ngx.INFO, 'data_sha1 and pipe_sha1 equals')
+end
+
+
 function _M.test()
     local test_prefix = 'test_pipe_'
 
@@ -308,6 +363,10 @@ function _M.test()
                 ' err_code: ' ..(err_code or '')..', err_msg:'..(err_msg or ''))
         end
     end
+
+    ngx.eof()
+    ngx.exit(ngx.HTTP_OK)
 end
+
 
 return _M

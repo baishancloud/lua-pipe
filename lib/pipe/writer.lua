@@ -150,4 +150,39 @@ function _M.make_ngx_writer()
     end
 end
 
+
+function _M.make_buffer_writer(buffer, do_concat)
+    do_concat = (do_concat ~= false)
+    if buffer == nil then
+        return nil, 'InvalidArguments', 'buffer is nil'
+    end
+
+    return function(pobj, ident)
+        local bytes = 0
+        local bufs = {}
+
+        while true do
+            local data, err_code, err_msg = pobj:read_pipe(ident)
+            if err_code ~= nil then
+                return nil, err_code, err_msg
+            end
+
+            if data == '' then
+                break
+            end
+
+            bytes = bytes + #data
+            table.insert(bufs, data)
+        end
+
+        if do_concat then
+            buffer['buf'] = table.concat(bufs)
+        else
+            buffer['buf'] = bufs
+        end
+
+        return bytes
+    end
+end
+
 return _M

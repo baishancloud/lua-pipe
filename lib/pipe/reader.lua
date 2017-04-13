@@ -98,4 +98,36 @@ function _M.make_socket_reader(socket, size, block_size)
     end
 end
 
+
+function _M.make_file_reader(fpath, block_size)
+    block_size = block_size or BLOCK_SIZE
+
+    return function(pobj, ident)
+        local buf
+
+        local fp, err_msg = io.open(fpath, 'r')
+        if fp == nil then
+            return nil, 'FileError', err_msg
+        end
+
+        while true do
+            buf = fp:read(block_size)
+            buf = buf or ''
+
+            local _, err_code, err_msg = pobj:write_pipe(ident, buf)
+            if err_code ~= nil then
+                fp:close()
+                return nil, err_code, err_msg
+            end
+
+            if buf == '' then
+                break
+            end
+        end
+
+        fp:close()
+    end
+end
+
+
 return _M
