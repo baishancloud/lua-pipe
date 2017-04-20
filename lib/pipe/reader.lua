@@ -13,6 +13,11 @@ local SOCKET_TIMEOUT = 100 * 1000
 function _M.make_http_reader(ips, port, verb, uri, opts)
     opts = opts or {}
 
+    local ret = {
+        size = 0,
+        time = 0,
+    }
+
     return function(pobj, ident)
         local http, err_code, err_msg
 
@@ -48,8 +53,10 @@ function _M.make_http_reader(ips, port, verb, uri, opts)
         end
 
         while true do
+            local t0 = ngx.now()
             local buf, err_code, err_msg =
                 http:read_body(opts.block_size or BLOCK_SIZE)
+            ret.time = ret.time + (ngx.now() - t0)
             if err_code ~= nil then
                 return nil, err_code, err_msg
             end
@@ -58,6 +65,8 @@ function _M.make_http_reader(ips, port, verb, uri, opts)
             if err_code ~= nil then
                 return nil, err_code, err_msg
             end
+
+            ret.size = ret.size + #buf
 
             if buf == '' then
                 break
@@ -69,6 +78,11 @@ end
 function _M.make_socket_reader(socket, size, block_size)
     block_size = block_size or BLOCK_SIZE
 
+    local ret = {
+        size = 0,
+        time = 0,
+    }
+
     return function(pobj, ident)
         local buf, rst, err_code, err_msg
 
@@ -78,7 +92,9 @@ function _M.make_socket_reader(socket, size, block_size)
             if recv_size == 0 then
                 buf = ''
             else
+                local t0 = ngx.now()
                 buf, err_msg = socket:receive(recv_size)
+                ret.time = ret.time + (ngx.now() - t0)
                 if buf == nil then
                     return nil, err_socket.to_code(err_msg), 'socket error: ' .. err_msg
                 end
@@ -90,17 +106,25 @@ function _M.make_socket_reader(socket, size, block_size)
             end
 
             size = size - #buf
+            ret.size = ret.size + #buf
 
             if buf == '' then
                 break
             end
         end
+
+        return ret
     end
 end
 
 
 function _M.make_file_reader(fpath, block_size)
     block_size = block_size or BLOCK_SIZE
+
+    local ret = {
+        size = 0,
+        time = 0,
+    }
 
     return function(pobj, ident)
         local buf
@@ -111,7 +135,10 @@ function _M.make_file_reader(fpath, block_size)
         end
 
         while true do
+            local t0 = ngx.now()
             buf = fp:read(block_size)
+            ret.time = ret.time + (ngx.now() - t0)
+
             buf = buf or ''
 
             local _, err_code, err_msg = pobj:write_pipe(ident, buf)
@@ -120,12 +147,16 @@ function _M.make_file_reader(fpath, block_size)
                 return nil, err_code, err_msg
             end
 
+            ret.size = ret.size + #buf
+
             if buf == '' then
                 break
             end
         end
 
         fp:close()
+
+        return ret
     end
 end
 
