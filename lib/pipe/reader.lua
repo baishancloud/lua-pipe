@@ -1,7 +1,7 @@
 local err_socket = require("err_socket")
 local tableutil = require("acid.tableutil")
 local strutil = require("acid.strutil")
-local s2http = require("s2http")
+local httpclient = require("acid.httpclient")
 
 local to_str = strutil.to_str
 
@@ -37,7 +37,7 @@ function _M.make_http_reader(ips, port, verb, uri, opts)
                 req = opts.signature_cb(req)
             end
 
-            http = s2http:new(ip, port, opts.timeout or SOCKET_TIMEOUT)
+            http = httpclient:new(ip, port, opts.timeout or SOCKET_TIMEOUT)
 
             local h_opts = {method=req.verb, headers=req.headers}
             for i=1, 3, 1 do

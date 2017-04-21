@@ -1,4 +1,4 @@
-local s2http = require("s2http")
+local httpclient = require("acid.httpclient")
 local tableutil = require("acid.tableutil")
 
 local _M = { _VERSION = '1.0' }
@@ -63,7 +63,7 @@ function _M.make_http_writer(ips, port, verb, uri, opts)
                 req = opts.signature_cb(req)
             end
 
-            http = s2http:new(ip, port, opts.timeout or SOCKET_TIMEOUT)
+            http = httpclient:new(ip, port, opts.timeout or SOCKET_TIMEOUT)
 
             local h_opts = {method=req.verb, headers=req.headers}
             for i=1, 3, 1 do
