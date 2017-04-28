@@ -156,6 +156,37 @@ local function wait_co_sema(self, cos, sema)
     end
 end
 
+local function async_wait_co_sema(self, cos, sema, quorum)
+    local dead_time = ngx.now() + self.sem_timeout
+
+    while ngx.now() <= dead_time do
+        local n_ok = 0
+
+        for _, co in ipairs(cos) do
+            if co.is_dead then
+                if co.err == nil then
+                    n_ok = n_ok + 1
+                end
+            end
+        end
+
+        if n_ok >= quorum then
+            return
+        end
+
+        ngx.sleep(0.001)
+    end
+
+    for _, co in ipairs(cos) do
+        if not co.is_dead then
+            co.err = co.err or {
+                err_code = 'SemaphoreError',
+                err_msg  = to_str('wait sempahore ', sema, ' timeout'),
+            }
+        end
+    end
+end
+
 local function run_filters(self, filters)
     local pipe_rst = get_pipe_result(self)
 
@@ -239,7 +270,7 @@ function _M.read_pipe(pobj, ident)
     return buf
 end
 
-function _M.pipe(self, is_running)
+function _M.pipe(self, is_running, quorum_return)
     start_coroutines(self, self.rd_cos, self.wrt_cos)
 
     while not is_read_eof(self) do
@@ -279,7 +310,11 @@ function _M.pipe(self, is_running)
         end
     end
 
-    wait_co_sema(self, self.wrt_cos, 'sema_dead')
+    if quorum_return ~= nil then
+        async_wait_co_sema(self, self.wrt_cos, 'sema_dead', quorum_return)
+    else
+        wait_co_sema(self, self.wrt_cos, 'sema_dead')
+    end
     kill_coroutines(self.rd_cos, self.wrt_cos)
 
     return get_pipe_result(self)
