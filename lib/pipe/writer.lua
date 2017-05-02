@@ -7,12 +7,12 @@ local _M = { _VERSION = '1.0' }
 local to_str = strutil.to_str
 
 local BLOCK_SIZE = 1024 * 1024
-local SOCKET_TIMEOUT = 100 * 1000
+local SOCKET_TIMEOUTS = {5 * 1000, 100 * 1000, 100 * 1000}
 
 function _M.connect_http(ips, port, verb, uri, opts)
     opts = opts or {}
 
-    local try_times = math.max(opts.try_times or 3, 1)
+    local try_times = math.max(opts.try_times or 1, 1)
 
     local http, err_code, err_msg
 
@@ -32,7 +32,7 @@ function _M.connect_http(ips, port, verb, uri, opts)
             req = opts.signature_cb(req)
         end
 
-        http = s2http:new(ip, port, opts.timeout or SOCKET_TIMEOUT)
+        http = s2http:new(ip, port, opts.timeouts or SOCKET_TIMEOUTS)
 
         local h_opts = {method=req.verb, headers=req.headers}
         for i=1, try_times, 1 do
