@@ -22,27 +22,6 @@ local function memery_writer(pobj, ident)
     end
 end
 
-local function make_memery_reader(datas)
-    if type(datas) == type('') then
-        datas = {datas}
-    end
-
-    table.insert(datas, '')
-
-    return function(pobj, ident)
-        for _, data in ipairs(datas) do
-            local _, err_code, err_msg = pobj:write_pipe(ident, data)
-            if err_code ~= nil then
-                return nil, err_code, err_msg
-            end
-
-            if data == '' then
-                break
-            end
-        end
-    end
-end
-
 local function make_check_err_filter(r_or_w, ident, expect_err, return_err)
     return function(rbufs, n_rds, wbufs, n_wrts, pipe_rst)
         local err
@@ -150,7 +129,7 @@ end
 
 function _M.test_pipe_args()
     local reader_case = {
-            {make_memery_reader('123'), nil},
+            {pipe_pipe.reader.make_memery_reader('123'), nil},
             {'notdunction', 'InvalidArgs'},
             {1234,          'InvalidArgs'}
         }
@@ -230,7 +209,7 @@ function _M.test_pipe_interrupt()
         wbufs[1] = rbufs[1]
     end
 
-    local readers = {make_memery_reader(test_datas)}
+    local readers = {pipe_pipe.reader.make_memery_reader(test_datas)}
     local writers = {memery_writer}
     local filters = {rd_filters = {interrupt_filter}}
 
@@ -263,7 +242,7 @@ function _M.test_pipe_abort()
         end
     end
 
-    local cpipe, err_code, err_msg = pipe_pipe:new({make_memery_reader(read_datas)},
+    local cpipe, err_code, err_msg = pipe_pipe:new({pipe_pipe.reader.make_memery_reader(read_datas)},
          {memery_writer}, {rd_filters = {read_times_filter, pipe_pipe.filter.copy_filter}})
     if err_code ~= nil then
         return nil, err_code, err_msg
@@ -283,7 +262,7 @@ function _M.test_pipe_not_enough_quorum()
         end
 
     local cpipe, err_code, err_msg = pipe_pipe:new(
-        {make_memery_reader(read_datas)}, {memery_writer, err_writer})
+        {pipe_pipe.reader.make_memery_reader(read_datas)}, {memery_writer, err_writer})
     if err_code ~= nil then
         return nil, err_code, err_msg
     end

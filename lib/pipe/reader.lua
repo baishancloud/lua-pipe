@@ -160,5 +160,34 @@ function _M.make_file_reader(fpath, block_size)
     end
 end
 
+function _M.make_memery_reader(bufs)
+    local ret = {
+        size = 0,
+        time = 0,
+    }
+
+    if type(bufs) == type('') then
+        bufs = {bufs}
+    end
+
+    table.insert(bufs, '')
+
+    return function(pobj, ident)
+        for _, buf in ipairs(bufs) do
+            local _, err_code, err_msg = pobj:write_pipe(ident, buf)
+            if err_code ~= nil then
+                return nil, err_code, err_msg
+            end
+
+            ret.size = ret.size + #buf
+
+            if buf == '' then
+                break
+            end
+        end
+
+        return ret
+    end
+end
 
 return _M
