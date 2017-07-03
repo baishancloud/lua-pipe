@@ -1,4 +1,4 @@
-local s2http = require("s2http")
+local httpclient = require("acid.httpclient")
 local tableutil = require("acid.tableutil")
 local strutil = require("acid.strutil")
 
@@ -32,7 +32,7 @@ function _M.connect_http(ips, port, verb, uri, opts)
             req = opts.signature_cb(req)
         end
 
-        http = s2http:new(ip, port, opts.timeouts or SOCKET_TIMEOUTS)
+        http = httpclient:new(ip, port, opts.timeouts or SOCKET_TIMEOUTS)
 
         local h_opts = {method=req.verb, headers=req.headers}
         for i=1, try_times, 1 do
