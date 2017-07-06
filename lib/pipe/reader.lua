@@ -19,7 +19,7 @@ function _M.make_http_reader(ips, port, verb, uri, opts)
     }
 
     return function(pobj, ident)
-        local http, err_code, err_msg
+        local http, _, err_code, err_msg
 
         for _, ip in ipairs(ips) do
             local headers = tableutil.dup(opts.headers or {}, true)
@@ -41,7 +41,7 @@ function _M.make_http_reader(ips, port, verb, uri, opts)
 
             local h_opts = {method=req.verb, headers=req.headers}
             for i=1, 3, 1 do
-                err_code, err_msg = http:request(req.uri, h_opts)
+                _, err_code, err_msg = http:request(req.uri, h_opts)
                 if err_code == nil then
                     break
                 end

@@ -14,7 +14,7 @@ function _M.connect_http(ips, port, verb, uri, opts)
 
     local try_times = math.max(opts.try_times or 1, 1)
 
-    local http, err_code, err_msg
+    local http, _, err_code, err_msg
 
     for _, ip in ipairs(ips) do
         local headers = tableutil.dup(opts.headers or {}, true)
@@ -36,7 +36,7 @@ function _M.connect_http(ips, port, verb, uri, opts)
 
         local h_opts = {method=req.verb, headers=req.headers}
         for i=1, try_times, 1 do
-            err_code, err_msg = http:send_request(req.uri, h_opts)
+            _, err_code, err_msg = http:send_request(req.uri, h_opts)
             if err_code == nil then
                 return http
             end
@@ -76,7 +76,7 @@ function _M.loop_http_write(pobj, ident, http)
 end
 
 function _M.get_http_response(http)
-    local err_code, err_msg = http:finish_request()
+    local _, err_code, err_msg = http:finish_request()
     if err_code ~= nil then
         return nil, err_code, err_msg
     end
