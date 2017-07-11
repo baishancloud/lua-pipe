@@ -197,7 +197,7 @@ end
 function _M.make_buffer_writer(buffer, do_concat)
     do_concat = (do_concat ~= false)
     if buffer == nil then
-        return nil, 'InvalidArguments', 'buffer is nil'
+        return nil, 'InvalidArgument', 'buffer is nil'
     end
 
     return function(pobj, ident)
