@@ -52,6 +52,10 @@ function _M.make_http_reader(ips, port, verb, uri, opts)
             end
         end
 
+        if opts.success_status ~= nil and opts.success_status ~= http.status then
+            return nil, 'InvalidHttpStatus', to_str('response http status:', http.status)
+        end
+
         while true do
             local t0 = ngx.now()
             local buf, err_code, err_msg =

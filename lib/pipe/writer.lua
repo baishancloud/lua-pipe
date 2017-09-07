@@ -75,10 +75,16 @@ function _M.loop_http_write(pobj, ident, http)
     return bytes
 end
 
-function _M.get_http_response(http)
+function _M.get_http_response(http, opts)
+    opts = opts or {}
+
     local _, err_code, err_msg = http:finish_request()
     if err_code ~= nil then
         return nil, err_code, err_msg
+    end
+
+    if opts.success_status ~= nil and opts.success_status ~= http.status then
+        return nil, 'InvalidHttpStatus', to_str('response http status:', http.status)
     end
 
     local resp = {
@@ -139,14 +145,14 @@ function _M.make_file_writer(file_path, mode)
     end
 end
 
-function _M.make_connected_http_writer(http)
+function _M.make_connected_http_writer(http, opts)
     return function(pobj, ident)
         local _, err_code, err_msg = _M.loop_http_write(pobj, ident, http)
         if err_code ~= nil then
             return nil, err_code, err_msg
         end
 
-        return _M.get_http_response(http)
+        return _M.get_http_response(http, opts)
     end
 end
 
@@ -162,7 +168,7 @@ function _M.make_http_writer(ips, port, verb, uri, opts)
             return nil, err_code, err_msg
         end
 
-        return _M.get_http_response(http)
+        return _M.get_http_response(http, opts)
     end
 end
 
