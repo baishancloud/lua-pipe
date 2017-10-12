@@ -40,7 +40,7 @@ local function spawn_coroutines(functions)
 
     for ident, func in ipairs(functions) do
         if type(func) ~= 'function' then
-            return nil, 'InvalidArgs', 'reader or wrier is not executable'
+            return nil, 'InvalidArgs', 'reader or wrtier is not executable'
         end
 
         table.insert(cos, {
