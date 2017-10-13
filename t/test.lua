@@ -130,8 +130,8 @@ end
 function _M.test_pipe_args()
     local reader_case = {
             {pipe_pipe.reader.make_memery_reader('123'), nil},
-            {'notdunction', 'InvalidArgs'},
-            {1234,          'InvalidArgs'}
+            {'notdunction', 'InvalidArguments'},
+            {1234,          'InvalidArguments'}
         }
 
     for _, case in ipairs(reader_case) do
@@ -149,7 +149,7 @@ function _M.test_pipe_empty_reader()
             end
         end
 
-    local check_filter = make_check_err_filter('r', 1, 'SemaphoreError', 'TestSuccess')
+    local check_filter = make_check_err_filter('r', 1, 'ReadTimeout', 'TestSuccess')
 
     local cpipe, err_code, err_msg = pipe_pipe:new({empty_reader},
          {memery_writer}, {rd_filters = {check_filter}}, 2)
@@ -327,6 +327,103 @@ function _M.test_pipe_file_reader_buffer_writer()
     ngx.log(ngx.INFO, 'data_sha1 and pipe_sha1 equals')
 end
 
+function _M.test_pipe_read_timeout()
+    local read_datas = {'xxx', 'yyy', 'zzz'}
+
+    local rd_timeout = 2
+    local wrt_timeout = 3
+
+    local timeout_reader = function(pobj, ident)
+        for i, buf in ipairs(read_datas) do
+            if i > 1 then
+                ngx.sleep(rd_timeout)
+            end
+
+            local _, err_code, err_msg = pobj:write_pipe(ident, buf)
+            if err_code ~= nil then
+                return nil, err_code, err_msg
+            end
+
+            if buf == '' then
+                break
+            end
+        end
+        return
+    end
+
+    local cpipe, err_code, err_msg = pipe_pipe:new(
+                        {timeout_reader},
+                        {memery_writer, memery_writer},
+                        {rd_filters = {
+                                pipe_pipe.filter.make_read_timeout_filter(1),
+                                pipe_pipe.filter.copy_filter,
+                            },
+                        },
+                        rd_timeout, wrt_timeout)
+
+    if err_code ~= nil then
+        return nil, err_code, err_msg
+    end
+
+    local rst, err_code, err_msg = cpipe:pipe(is_running)
+    if err_code ~= 'ReadTimeout' then
+        return nil, 'TestReadTimeout', tostring(err_code) .. ':'.. tostring(err_msg)
+    end
+end
+
+function _M.test_pipe_write_timeout()
+    local read_datas = {'xxx', 'yyy', 'zzz'}
+
+    local rd_timeout = 3
+    local wrt_timeout = 2
+
+    local timeout_writer = function(pobj, ident)
+        local n_write = 0
+        while true do
+            n_write = n_write + 1
+            if n_write > 1 then
+                ngx.sleep(wrt_timeout + 2)
+            end
+            local data, err_code, err_msg = pobj:read_pipe(ident)
+            if err_code ~= nil then
+                return nil, err_code, err_msg
+            end
+
+            if data == '' then
+                break
+            end
+        end
+    end
+
+    local check_all_write_timeout_filter = function(rbufs, n_rd, wbufs, n_wrt, pipe_rst)
+        for i=1, n_wrt, 1 do
+            local co_err = pipe_rst.write_result[i].err or {}
+            if  co_err.err_code ~= 'WriteTimeout' then
+                return
+            end
+        end
+
+        return nil, 'WriteTimeout', 'all writer are write timeout'
+    end
+
+    local cpipe, err_code, err_msg = pipe_pipe:new(
+                        {pipe_pipe.reader.make_memery_reader(read_datas)},
+                        {timeout_writer, timeout_writer},
+                        {wrt_filters={
+                                check_all_write_timeout_filter,
+                            },
+                        },
+                        rd_timeout, wrt_timeout)
+
+    if err_code ~= nil then
+        return nil, err_code, err_msg
+    end
+
+    local rst, err_code, err_msg = cpipe:pipe(is_running)
+    if err_code ~= 'WriteTimeout' then
+        return nil, 'TestWriteTimeout', tostring(err_code) .. ':'.. tostring(err_msg)
+    end
+end
 
 function _M.test()
     local test_prefix = 'test_pipe_'

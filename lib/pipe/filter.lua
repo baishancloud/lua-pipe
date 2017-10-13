@@ -40,4 +40,14 @@ function _M.make_write_quorum_filter(quorum)
     end
 end
 
+function _M.make_read_timeout_filter(r_idx)
+    return function(rbufs, n_rd, wbufs, n_wrt, pipe_rst)
+        local co_err = pipe_rst.read_result[r_idx].err or {}
+        if co_err.err_code == 'ReadTimeout' then
+            return nil, co_err.err_code, co_err.err_msg
+        end
+    end
+end
+
+
 return _M

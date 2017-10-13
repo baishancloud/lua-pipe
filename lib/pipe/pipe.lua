@@ -13,7 +13,8 @@ _M.writer = pipe_writer
 _M.filter = pipe_filter
 
 local to_str = strutil.to_str
-local SEMAPHORE_TIMEOUT = 300 --seconds
+local READ_TIMEOUT = 300 --seconds
+local WRITE_TIMEOUT = 300 --seconds
 
 local function wrap_co_func(co, ...)
     local ok, rst, err_code, err_msg = pcall(co.func, ...)
@@ -29,18 +30,18 @@ local function wrap_co_func(co, ...)
             err_code, err_msg = 'CoroutineError', rst
         end
         co.err = {err_code = err_code, err_msg = err_msg}
-        ngx.log(ngx.ERR, "coroutine exit with error:", to_str(co.err))
+        ngx.log(ngx.ERR, to_str(co.rd_or_wrt, " coroutine exit with error:", co.err))
     end
 
     co.is_dead = true
 end
 
-local function spawn_coroutines(functions)
+local function spawn_coroutines(functions, rd_or_wrt)
     local cos = {}
 
     for ident, func in ipairs(functions) do
         if type(func) ~= 'function' then
-            return nil, 'InvalidArgs', 'reader or wrtier is not executable'
+            return nil, 'InvalidArguments', to_str(rd_or_wrt, ' is not executable')
         end
 
         table.insert(cos, {
@@ -52,6 +53,8 @@ local function spawn_coroutines(functions)
 
             is_dead   = false,
             is_eof    = false,
+
+            rd_or_wrt = rd_or_wrt,
 
             sema_buf_ready  = semaphore.new(),
             sema_buf_filled = semaphore.new(),
@@ -127,6 +130,14 @@ local function set_nil(bufs, n)
     end
 end
 
+local function set_nil_on_err(cos, bufs, n)
+    for i = 1, n, 1 do
+        if cos[i].err ~= nil then
+            bufs[i] = nil
+        end
+    end
+end
+
 local function is_read_eof(self)
     for _, co in ipairs(self.rd_cos) do
         if co.is_eof == false then
@@ -142,22 +153,25 @@ local function post_co_sema(self, cos, sema)
     end
 end
 
-local function wait_co_sema(self, cos, sema)
+local function wait_co_sema(self, cos, sema, timeout, err_code)
     for i, co in ipairs(cos) do
         if not co.is_dead then
-            local ok, err = co[sema]:wait(self.sem_timeout)
+            local t0 = ngx.now()
+            local ok, err = co[sema]:wait(timeout)
+            timeout = math.max(timeout - (ngx.now() - t0), 0.001)
             if err then
                 co.err = {
-                    err_code = 'SemaphoreError',
-                    err_msg  = to_str('wait sempahore ', sema, ' error:', err),
+                    err_code = err_code,
+                    err_msg  = to_str('pipe wait ',
+                        co.rd_or_wrt, ' sempahore ', sema, ' error:', err),
                 }
             end
         end
     end
 end
 
-local function async_wait_co_sema(self, cos, sema, quorum)
-    local dead_time = ngx.now() + self.sem_timeout
+local function async_wait_co_sema(self, cos, sema, quorum, timeout, err_code)
+    local dead_time = ngx.now() + timeout
 
     while ngx.now() <= dead_time do
         local n_ok = 0
@@ -180,8 +194,9 @@ local function async_wait_co_sema(self, cos, sema, quorum)
     for _, co in ipairs(cos) do
         if not co.is_dead then
             co.err = co.err or {
-                err_code = 'SemaphoreError',
-                err_msg  = to_str('wait sempahore ', sema, ' timeout'),
+                err_code = err_code,
+                err_msg  = to_str('pipe wait ',
+                    co.rd_or_wrt, ' sempahore ', sema, ' timeout'),
             }
         end
     end
@@ -200,17 +215,17 @@ local function run_filters(self, filters)
     end
 end
 
-function _M.new(_, rds, wrts, filters, sem_timeout)
+function _M.new(_, rds, wrts, filters, rd_timeout, wrt_timeout)
     if #rds == 0 or #wrts == 0 then
         return nil, 'InvalidArgs', 'reader or writer cant be empty'
     end
 
-    local rd_cos, err_code, err_msg = spawn_coroutines(rds)
+    local rd_cos, err_code, err_msg = spawn_coroutines(rds, 'reader')
     if err_code ~= nil then
         return nil, err_code, err_msg
     end
 
-    local wrt_cos, err_code, err_msg = spawn_coroutines(wrts)
+    local wrt_cos, err_code, err_msg = spawn_coroutines(wrts, 'writer')
     if err_code ~= nil then
         return nil, err_code, err_msg
     end
@@ -231,7 +246,8 @@ function _M.new(_, rds, wrts, filters, sem_timeout)
         wrt_filters = filters.wrt_filters
             or {pipe_filter.make_write_quorum_filter(#wrts)},
 
-        sem_timeout = sem_timeout or SEMAPHORE_TIMEOUT,
+        rd_timeout = rd_timeout or READ_TIMEOUT,
+        wrt_timeout = wrt_timeout or WRITE_TIMEOUT,
     }
 
     return setmetatable(obj, mt)
@@ -240,9 +256,18 @@ end
 function _M.write_pipe(pobj, ident, buf)
     local rd_co = pobj.rd_cos[ident]
 
-    local ok, err = rd_co.sema_buf_ready:wait(pobj.sem_timeout)
+    if rd_co.err ~= nil then
+        return nil, rd_co.err.err_code, rd_co.err.err_msg
+    end
+
+    local ok, err = rd_co.sema_buf_ready:wait(pobj.wrt_timeout)
     if err then
-        return nil, 'SemaphoreError', 'wait buffer ready sempahore:' .. err
+        return nil, 'WriteTimeout',
+            to_str('reader ', ident, ' wait buffer ready sempahore error:', err)
+    end
+
+    if rd_co.err ~= nil then
+        return nil, rd_co.err.err_code, rd_co.err.err_msg
     end
 
     if buf == '' then
@@ -257,9 +282,18 @@ end
 function _M.read_pipe(pobj, ident)
     local wrt_co = pobj.wrt_cos[ident]
 
-    local ok, err = wrt_co.sema_buf_filled:wait(pobj.sem_timeout)
+    if wrt_co.err ~= nil then
+        return nil, wrt_co.err.err_code, wrt_co.err.err_msg
+    end
+
+    local ok, err = wrt_co.sema_buf_filled:wait(pobj.rd_timeout)
     if err then
-        return nil, 'SemaphoreError', err
+        return nil, 'ReadTimeout',
+            to_str('write ', ident, ' wait buffer filled sempahore error:', err)
+    end
+
+    if wrt_co.err ~= nil then
+        return nil, wrt_co.err.err_code, wrt_co.err.err_msg
     end
 
     local buf = pobj.wbufs[ident]
@@ -281,7 +315,10 @@ function _M.pipe(self, is_running, quorum_return)
 
         set_nil(self.rbufs, self.n_rd)
         post_co_sema(self, self.rd_cos, 'sema_buf_ready')
-        wait_co_sema(self, self.rd_cos, 'sema_buf_filled')
+        wait_co_sema(self, self.rd_cos,
+            'sema_buf_filled', self.rd_timeout, 'ReadTimeout')
+
+        set_nil_on_err(self.rd_cos, self.rbufs, self.n_rd)
 
         local rst, err_code, err_msg = run_filters(self, self.rd_filters)
         if err_code ~= nil then
@@ -301,7 +338,8 @@ function _M.pipe(self, is_running, quorum_return)
         end
 
         post_co_sema(self, self.wrt_cos, 'sema_buf_filled')
-        wait_co_sema(self, self.wrt_cos, 'sema_buf_ready')
+        wait_co_sema(self, self.wrt_cos,
+            'sema_buf_ready', self.wrt_timeout, 'WriteTimeout')
 
         local _, err_code, err_msg = run_filters(self, self.wrt_filters)
         if err_code ~= nil then
@@ -311,9 +349,11 @@ function _M.pipe(self, is_running, quorum_return)
     end
 
     if quorum_return ~= nil then
-        async_wait_co_sema(self, self.wrt_cos, 'sema_dead', quorum_return)
+        async_wait_co_sema(self, self.wrt_cos,
+            'sema_dead', quorum_return, self.wrt_timeout, 'WriteTimeout')
     else
-        wait_co_sema(self, self.wrt_cos, 'sema_dead')
+        wait_co_sema(self, self.wrt_cos,
+            'sema_dead', self.wrt_timeout, 'WriteTimeout')
     end
     kill_coroutines(self.rd_cos, self.wrt_cos)
 
