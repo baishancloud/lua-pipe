@@ -1,7 +1,8 @@
 local pipe_pipe = require("pipe.pipe")
-local util = require('pipe.t.util')
+local util = require('t.util')
 local resty_md5 = require("resty.md5")
 local resty_string = require("resty.string")
+local strutil = require("acid.strutil")
 
 local _M = {}
 
@@ -70,7 +71,7 @@ local function make_calc_md5_filter(rst)
     end
 end
 
-function _M.test_pipe_http_reader()
+function _M.__test_pipe_http_reader()
     local wrt_files = {
         '/tmp/t1.out',
         '/tmp/t2.out',
@@ -428,18 +429,25 @@ end
 function _M.test()
     local test_prefix = 'test_pipe_'
 
+    local output = 'tests all passed'
+
     for name, case in pairs(_M) do
         if type(case) == 'function'
             and string.sub(name, 1, #test_prefix) == test_prefix then
 
+            ngx.log(ngx.INFO, 'running testcase:', name)
             local _ , err_code, err_msg = case()
 
-            assert(err_code == nil,
-                'runc test, case: ' .. name ..
-                ' err_code: ' ..(err_code or '')..', err_msg:'..(err_msg or ''))
+            if err_code ~= nil then
+                output = 'runc test, case: ' .. name ..
+                ' err_code: ' ..(err_code or '')..', err_msg:'..(err_msg or '')
+
+                break
+            end
         end
     end
 
+    ngx.say(output)
     ngx.eof()
     ngx.exit(ngx.HTTP_OK)
 end
