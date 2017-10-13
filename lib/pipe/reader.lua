@@ -1,4 +1,3 @@
-local err_socket = require("err_socket")
 local tableutil = require("acid.tableutil")
 local strutil = require("acid.strutil")
 local httpclient = require("acid.httpclient")
@@ -9,6 +8,18 @@ local _M = { _VERSION = '1.0' }
 
 local BLOCK_SIZE = 1024 * 1024
 local SOCKET_TIMEOUTS = {5 * 1000, 100 * 1000, 100 * 1000}
+
+local err_socket = {
+    [ "default" ]        = "InvalidRequest",
+    [ "timeout" ]        = "RequestTimeout",
+    [ "client aborted" ] = "InvalidRequest",
+    [ "connection reset by peer" ] = "InvalidRequest",
+}
+
+local function socket_err_code( err, default )
+    default = default or _M.default
+    return err_socket[err] or default
+end
 
 function _M.make_http_reader(ips, port, verb, uri, opts)
     opts = opts or {}
@@ -100,7 +111,7 @@ function _M.make_socket_reader(socket, size, block_size)
                 buf, err_msg = socket:receive(recv_size)
                 ret.time = ret.time + (ngx.now() - t0)
                 if buf == nil then
-                    return nil, err_socket.to_code(err_msg), 'socket error: ' .. err_msg
+                    return nil, socket_err_code(err_msg), 'socket error: ' .. err_msg
                 end
             end
 
