@@ -1,6 +1,8 @@
 local httpclient = require("acid.httpclient")
 local tableutil = require("acid.tableutil")
 local strutil = require("acid.strutil")
+local rpc_logging = require("acid.rpc_logging")
+local acid_setutil = require("acid.setutil")
 
 local _M = { _VERSION = '1.0' }
 
@@ -8,6 +10,84 @@ local to_str = strutil.to_str
 
 local BLOCK_SIZE = 1024 * 1024
 local SOCKET_TIMEOUTS = {5 * 1000, 100 * 1000, 100 * 1000}
+
+local INF = math.huge
+
+
+local function write_data_to_ngx(pobj, ident, opts)
+    -- range = {start, end}
+    -- range is a closed interval.
+    local range = opts.range
+    local pipe_log = opts.pipe_log
+
+    local recv_left, recv_right = 0, 0
+    local from, to
+    if range ~= nil then
+        from = range['start'] + 1
+
+        if range['end'] ~= nil then
+            to = range['end'] + 1
+        else
+            to = INF
+        end
+
+        if from > to then
+            return nil, 'InvalidRange', string.format(
+                'start: %d is greater than end: %d', from, to)
+        end
+    end
+
+    while true do
+        local data, err, err_msg
+        if pipe_log ~= nil then
+            rpc_logging.reset_start(pipe_log)
+
+            data, err, err_msg = pobj:read_pipe(ident)
+
+            rpc_logging.set_err(pipe_log, err)
+            rpc_logging.incr_stat(pipe_log, 'downstream', 'sendbody', #(data or ''))
+        else
+            data, err, err_msg = pobj:read_pipe(ident)
+        end
+
+        if err ~= nil then
+            return nil, err, err_msg
+        end
+
+        if data == '' then
+            break
+        end
+
+        recv_left = recv_right + 1
+        recv_right = recv_right + #data
+
+        if from ~= nil then
+            local intersection, err, err_msg =
+                acid_setutil.intersect(from, to, recv_left, recv_right)
+            if err ~= nil then
+                return nil, err, err_msg
+            end
+
+            local f, t = intersection.from, intersection.to
+            if f == nil then
+                data = ''
+            else
+                if t - f + 1 ~= #data then
+                    data = data:sub(f - recv_left + 1, t - recv_left + 1)
+                end
+            end
+        end
+
+        ngx.print(data)
+        local _, err = ngx.flush(true)
+        if err then
+            return nil, 'ClientAborted', err
+        end
+    end
+
+    return recv_right
+end
+
 
 function _M.connect_http(ips, port, verb, uri, opts)
     opts = opts or {}
@@ -172,30 +252,25 @@ function _M.make_http_writer(ips, port, verb, uri, opts)
     end
 end
 
-function _M.make_ngx_writer()
+function _M.make_ngx_writer(opts)
+    opts = opts or {}
+
     return function(pobj, ident)
-        local bytes = 0
+        return write_data_to_ngx(pobj, ident, opts)
+    end
+end
 
-        while true do
-            local data, err_code, err_msg = pobj:read_pipe(ident)
-            if err_code ~= nil then
-                return nil, err_code, err_msg
-            end
 
-            if data == '' then
-                break
-            end
+function _M.make_ngx_resp_writer(status, headers, opts)
+    opts = opts or {}
 
-            bytes = bytes + #data
+    ngx.status = status
+    for k, v in pairs(headers) do
+        ngx.header[k] = v
+    end
 
-            ngx.print(data)
-            local _, err = ngx.flush(true)
-            if err then
-                return nil, 'ClientAborted', err
-            end
-        end
-
-        return bytes
+    return function(pobj, ident)
+        return write_data_to_ngx(pobj, ident, opts)
     end
 end
 
