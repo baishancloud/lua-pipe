@@ -1,4 +1,6 @@
 local httplib = require("pipe.httplib")
+local strutil = require("acid.strutil")
+local to_str = strutil.to_str
 local rpc_logging = require("acid.rpc_logging")
 local acid_setutil = require("acid.setutil")
 
@@ -207,6 +209,48 @@ function _M.make_buffer_writer(buffer, do_concat)
 
         return bytes
     end
+end
+
+function _M.make_quorum_http_writers(dests, writer_opts, quorum)
+    local conn_threads = {}
+
+    for _, dest in ipairs(dests) do
+        local th = ngx.thread.spawn(_M.connect_http,
+            dest.ips, dest.port, dest.method, dest.uri, writer_opts)
+        table.insert(conn_threads, th)
+    end
+
+    local writers = {}
+    local n_ok = 0
+    for _, th in ipairs(conn_threads) do
+        local wrt = {}
+
+        local ok, http, err_code, err_msg = ngx.thread.wait(th)
+        if ok and err_code == nil then
+            n_ok = n_ok + 1
+            wrt.http = http
+            wrt.writer = _M.make_connected_http_writer(http, writer_opts)
+        else
+            wrt.err = {
+                err_code = err_code or 'CoroutineError',
+                err_msg = err_msg or 'coroutine error, when connect',
+            }
+        end
+        table.insert(writers, wrt)
+    end
+
+    if n_ok >= quorum then
+        return writers
+    end
+
+    for _, wrt in ipairs(writers) do
+        if wrt.http ~= nil then
+            wrt.http:close()
+        end
+        wrt.http = nil
+    end
+
+    return nil, 'NotEnoughConnect', to_str('quorum:', quorum, ", actual:", n_ok)
 end
 
 return _M
