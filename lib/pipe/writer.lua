@@ -1,11 +1,13 @@
 local httplib = require("pipe.httplib")
 local strutil = require("acid.strutil")
-local to_str = strutil.to_str
 local rpc_logging = require("acid.rpc_logging")
 local acid_setutil = require("acid.setutil")
+local s3_client = require('resty.aws_s3.client')
+local aws_chunk_writer = require("resty.aws_chunk.writer")
 
 local _M = { _VERSION = '1.0' }
 
+local to_str = strutil.to_str
 local INF = math.huge
 
 local function write_data_to_ngx(pobj, ident, opts)
@@ -251,6 +253,50 @@ function _M.make_quorum_http_writers(dests, writer_opts, quorum)
     end
 
     return nil, 'NotEnoughConnect', to_str('quorum:', quorum, ", actual:", n_ok)
+end
+
+function _M.make_aws_put_s3_writer(access_key, secret_key, endpoint, params, opts)
+    local s3_cli, err_code, err_msg =
+        s3_client.new(access_key, secret_key, endpoint, opts)
+    if err_code ~= nil then
+        return nil, err_code, err_msg
+    end
+
+    local request, err_code, err_msg =
+        s3_cli:get_signed_request(params, 'put_object', opts)
+    if err_code ~= nil then
+        return nil, err_code, err_msg
+    end
+
+    return function(pobj, ident)
+        local chunk_writer =
+            aws_chunk_writer:new(request.signer, request.auth_ctx)
+
+        local _, err_code, err_msg = s3_cli:send_request(
+            request.verb, request.uri, request.headers,request.body)
+        if err_code ~= nil then
+            return nil, err_code, err_msg
+        end
+
+        while true do
+            local data, err_code, err_msg = pobj:read_pipe(ident)
+            if err_code ~= nil then
+                return nil, err_code, err_msg
+            end
+
+            local chunked_data = chunk_writer:make_chunk(data)
+            local _, err_code, err_msg = s3_cli:send_body(chunked_data)
+            if err_code ~= nil then
+                return nil, err_code, err_msg
+            end
+
+            if data == '' then
+                break
+            end
+        end
+
+        return s3_cli:finish_request()
+    end
 end
 
 return _M
