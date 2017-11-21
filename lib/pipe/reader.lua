@@ -1,13 +1,9 @@
 local tableutil = require("acid.tableutil")
-local strutil = require("acid.strutil")
-local httpclient = require("acid.httpclient")
-
-local to_str = strutil.to_str
+local httplib = require("pipe.httplib")
 
 local _M = { _VERSION = '1.0' }
 
 local BLOCK_SIZE = 1024 * 1024
-local SOCKET_TIMEOUTS = {5 * 1000, 100 * 1000, 100 * 1000}
 
 local err_socket = {
     [ "default" ]        = "InvalidRequest",
@@ -21,72 +17,40 @@ local function socket_err_code( err, default )
     return err_socket[err] or default
 end
 
-function _M.make_http_reader(ips, port, verb, uri, opts)
-    opts = opts or {}
+function _M.connect_http(ips, port, verb, uri, opts)
+    return httplib.connect_http(ips, port, verb, uri, opts)
+end
 
-    local ret = {
-        size = 0,
-        time = 0,
-    }
+function _M.get_http_response(http, opts)
+    return httplib.get_http_response(http, opts)
+end
 
+function _M.loop_http_read(pobj, ident, http)
+    return httplib.loop_http_read(pobj, ident, http)
+end
+
+function _M.make_connected_http_reader(http)
     return function(pobj, ident)
-        local http, _, err_code, err_msg
+        return _M.loop_http_read(pobj, ident, http)
+    end
+end
 
-        for _, ip in ipairs(ips) do
-            local headers = tableutil.dup(opts.headers or {}, true)
-            headers.Host = headers.Host or ip
-
-            local req = {
-                ip   = ip,
-                port = port,
-                uri  = uri,
-                verb = verb,
-                headers = headers,
-            }
-
-            if opts.signature_cb ~= nil then
-                req = opts.signature_cb(req)
-            end
-
-            http = httpclient:new(ip, port, opts.timeouts or SOCKET_TIMEOUTS)
-
-            local h_opts = {method=req.verb, headers=req.headers}
-            for i=1, 3, 1 do
-                _, err_code, err_msg = http:request(req.uri, h_opts)
-                if err_code == nil then
-                    break
-                end
-            end
-
-            if err_code ~= nil then
-                return nil, err_code, err_msg
-            end
+function _M.make_http_reader(ips, port, verb, uri, opts)
+    return function(pobj, ident)
+        local http , err_code, err_msg = _M.connect_http(ips, port, verb, uri, opts)
+        if err_code ~= nil then
+            return nil, err_code, err_msg
         end
 
-        if opts.success_status ~= nil and opts.success_status ~= http.status then
-            return nil, 'InvalidHttpStatus', to_str('response http status:', http.status)
+        opts = tableutil.dup(opts, true)
+        opts.read_body = false
+
+        local _, err_code, err_msg = _M.get_http_response(http, opts)
+        if err_code ~= nil then
+            return nil, err_code, err_msg
         end
 
-        while true do
-            local t0 = ngx.now()
-            local buf, err_code, err_msg =
-                http:read_body(opts.block_size or BLOCK_SIZE)
-            ret.time = ret.time + (ngx.now() - t0)
-            if err_code ~= nil then
-                return nil, err_code, err_msg
-            end
-
-            local rst, err_code, err_msg = pobj:write_pipe(ident, buf)
-            if err_code ~= nil then
-                return nil, err_code, err_msg
-            end
-
-            ret.size = ret.size + #buf
-
-            if buf == '' then
-                break
-            end
-        end
+        return _M.loop_http_read(pobj, ident, http)
     end
 end
 
