@@ -49,5 +49,16 @@ function _M.make_read_timeout_filter(r_idx)
     end
 end
 
+function _M.make_read_max_size_filter(max_size, r_idx)
+    local size = 0
+
+    return function(rbufs, n_rd, wbufs, n_wrt, pipe_rst)
+        size = size + #(rbufs[r_idx] or '')
+        if size > max_size then
+            return nil, 'EntityTooLarge',
+                string.format('read size %s large than %s', size, max_size)
+        end
+    end
+end
 
 return _M
