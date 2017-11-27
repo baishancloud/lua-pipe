@@ -13,8 +13,8 @@ _M.writer = pipe_writer
 _M.filter = pipe_filter
 
 local to_str = strutil.to_str
-local READ_TIMEOUT = 300 --seconds
-local WRITE_TIMEOUT = 300 --seconds
+local READ_TIMEOUT = 300 * 1000 --ms
+local WRITE_TIMEOUT = 300 * 1000 --ms
 
 local function wrap_co_func(co, ...)
     local ok, rst, err_code, err_msg = pcall(co.func, ...)
@@ -175,17 +175,24 @@ local function async_wait_co_sema(self, cos, sema, quorum, timeout, err_code)
 
     while ngx.now() <= dead_time do
         local n_ok = 0
+        local n_active = 0
 
         for _, co in ipairs(cos) do
             if co.is_dead then
                 if co.err == nil then
                     n_ok = n_ok + 1
                 end
+            else
+                n_active = n_active + 1
             end
         end
 
         if n_ok >= quorum then
             return
+        end
+
+        if n_active + n_ok < quorum then
+            break
         end
 
         ngx.sleep(0.001)
@@ -246,8 +253,8 @@ function _M.new(_, rds, wrts, filters, rd_timeout, wrt_timeout)
         wrt_filters = filters.wrt_filters
             or {pipe_filter.make_write_quorum_filter(#wrts)},
 
-        rd_timeout = rd_timeout or READ_TIMEOUT,
-        wrt_timeout = wrt_timeout or WRITE_TIMEOUT,
+        rd_timeout = (rd_timeout or READ_TIMEOUT)/1000,
+        wrt_timeout = (wrt_timeout or WRITE_TIMEOUT)/1000,
     }
 
     return setmetatable(obj, mt)
