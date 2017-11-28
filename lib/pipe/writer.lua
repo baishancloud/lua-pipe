@@ -15,8 +15,10 @@ local INF = math.huge
 
 
 local function write_data_to_ngx(pobj, ident, opts)
-    -- range = {start, end}
-    -- range is a closed interval.
+    opts = opts or {}
+
+    -- range = {start, end} is rfc2612 Range header,
+    -- a closed interval, starts with index 0
     local range = opts.range
     local pipe_log = opts.pipe_log
 
@@ -253,8 +255,6 @@ function _M.make_http_writer(ips, port, verb, uri, opts)
 end
 
 function _M.make_ngx_writer(opts)
-    opts = opts or {}
-
     return function(pobj, ident)
         return write_data_to_ngx(pobj, ident, opts)
     end
@@ -262,8 +262,6 @@ end
 
 
 function _M.make_ngx_resp_writer(status, headers, opts)
-    opts = opts or {}
-
     ngx.status = status
     for k, v in pairs(headers) do
         ngx.header[k] = v
