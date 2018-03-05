@@ -13,8 +13,8 @@ _M.writer = pipe_writer
 _M.filter = pipe_filter
 
 local to_str = strutil.to_str
-local READ_TIMEOUT = 300 * 1000 --ms
-local WRITE_TIMEOUT = 300 * 1000 --ms
+local READ_TIMEOUT = 600 * 1000 --ms
+local WRITE_TIMEOUT = 600 * 1000 --ms
 
 local function wrap_co_func(co, ...)
     local ok, rst, err_code, err_msg = pcall(co.func, ...)
