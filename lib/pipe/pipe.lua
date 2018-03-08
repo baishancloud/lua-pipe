@@ -30,7 +30,7 @@ local function wrap_co_func(co, ...)
             err_code, err_msg = 'CoroutineError', rst
         end
         co.err = {err_code = err_code, err_msg = err_msg}
-        ngx.log(ngx.ERR, to_str(co.rd_or_wrt, " coroutine exit with error:", co.err))
+        ngx.log(ngx.ERR, to_str(co.rd_or_wrt, ' ', co.ident, " coroutine exit with error:", co.err))
     end
 
     co.is_dead = true
