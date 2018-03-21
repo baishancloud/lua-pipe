@@ -2,6 +2,10 @@ local httpclient = require("acid.httpclient")
 local tableutil = require("acid.tableutil")
 local strutil = require("acid.strutil")
 
+local resty_sha1 = require( "resty.sha1" )
+local resty_md5 = require( "resty.md5" )
+local resty_string = require( "resty.string" )
+
 local _M = { _VERSION = '1.0' }
 
 local to_str = strutil.to_str
@@ -91,8 +95,24 @@ function _M.get_http_response(http, opts)
     return resp
 end
 
-function _M.loop_http_read(pobj, ident, http, block_size)
-    local bytes = 0
+function _M.loop_http_read(pobj, ident, http, block_size, opts)
+    opts = opts or {}
+
+    local rst = {
+        size = 0,
+        md5 = nil,
+        sha1 = nil,
+    }
+
+    local md5_alg
+    if opts.calc_md5 == true then
+        md5_alg = resty_md5:new()
+    end
+
+    local sha1_alg
+    if opts.calc_sha1 == true then
+        sha1_alg = resty_sha1:new()
+    end
 
     while true do
         local data, err_code, err_msg =
@@ -101,19 +121,35 @@ function _M.loop_http_read(pobj, ident, http, block_size)
             return nil, err_code, err_msg
         end
 
-        local rst, err_code, err_msg = pobj:write_pipe(ident, data)
+        local _, err_code, err_msg = pobj:write_pipe(ident, data)
         if err_code ~= nil then
             return nil, err_code, err_msg
         end
 
-        bytes = bytes + #data
+        if opts.calc_md5 == true then
+            md5_alg:update(data)
+        end
+
+        if opts.calc_sha1 == true then
+            sha1_alg:update(data)
+        end
+
+        rst.size = rst.size + #data
 
         if data == '' then
+            if opts.calc_md5 == true then
+                rst.md5 = resty_string.to_hex(md5_alg:final())
+            end
+
+            if opts.calc_sha1 == true then
+                rst.sha1 = resty_string.to_hex(sha1_alg:final())
+            end
+
             break
         end
     end
 
-    return bytes
+    return rst
 end
 
 function _M.loop_http_write(pobj, ident, http)

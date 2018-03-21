@@ -13,25 +13,29 @@ local INF = math.huge
 local function write_data_to_ngx(pobj, ident, opts)
     opts = opts or {}
 
-    -- range = {start, end} is rfc2612 Range header,
+    -- range = {from, to} is rfc2612 Range header,
     -- a closed interval, starts with index 0
     local range = opts.range
     local pipe_log = opts.pipe_log
 
+    local ret = {
+            size = 0,
+        }
+
     local recv_left, recv_right = 0, 0
     local from, to
     if range ~= nil then
-        from = range['start'] + 1
+        from = range['from'] + 1
 
-        if range['end'] ~= nil then
-            to = range['end'] + 1
+        if range['to'] ~= nil then
+            to = range['to'] + 1
         else
             to = INF
         end
 
         if from > to then
             return nil, 'InvalidRange', string.format(
-                'start: %d is greater than end: %d', from, to)
+                'from: %d is greater than to: %d', from, to)
         end
     end
 
@@ -76,6 +80,8 @@ local function write_data_to_ngx(pobj, ident, opts)
             end
         end
 
+        ret.size = ret.size + #data
+
         ngx.print(data)
         local _, err = ngx.flush(true)
         if err then
@@ -83,7 +89,7 @@ local function write_data_to_ngx(pobj, ident, opts)
         end
     end
 
-    return recv_right
+    return ret
 end
 
 function _M.connect_http(ips, port, verb, uri, opts)

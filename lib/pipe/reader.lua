@@ -25,13 +25,13 @@ function _M.get_http_response(http, opts)
     return httplib.get_http_response(http, opts)
 end
 
-function _M.loop_http_read(pobj, ident, http)
-    return httplib.loop_http_read(pobj, ident, http)
+function _M.loop_http_read(pobj, ident, http, block_size, opts)
+    return httplib.loop_http_read(pobj, ident, http, block_size, opts)
 end
 
-function _M.make_connected_http_reader(http)
+function _M.make_connected_http_reader(http, block_size, opts)
     return function(pobj, ident)
-        return _M.loop_http_read(pobj, ident, http)
+        return _M.loop_http_read(pobj, ident, http, block_size, opts)
     end
 end
 
@@ -50,7 +50,7 @@ function _M.make_http_reader(ips, port, verb, uri, opts)
             return nil, err_code, err_msg
         end
 
-        return _M.loop_http_read(pobj, ident, http)
+        return _M.loop_http_read(pobj, ident, http, opts.block_size, opts)
     end
 end
 
