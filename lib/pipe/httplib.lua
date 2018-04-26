@@ -36,7 +36,7 @@ function _M.connect_http(ips, port, verb, uri, opts)
             req = opts.signature_cb(req)
         end
 
-        http = httpclient:new(ip, port, opts.timeouts or SOCKET_TIMEOUTS)
+        http = httpclient:new(ip, port, opts.timeouts or SOCKET_TIMEOUTS, opts.http_opts)
 
         local h_opts = {method=req.verb, headers=req.headers}
         for i=1, try_times, 1 do
