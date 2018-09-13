@@ -17,7 +17,9 @@ local function write_data_to_ngx(pobj, ident, opts)
     -- range = {from, to} is rfc2612 Range header,
     -- a closed interval, starts with index 0
     local range = opts.range
-    local pipe_log = opts.pipe_log
+
+    local log = rpc_logging.new_entry('write_client')
+    rpc_logging.add_log(log)
 
     local ret = {
             size = 0,
@@ -41,17 +43,12 @@ local function write_data_to_ngx(pobj, ident, opts)
     end
 
     while true do
-        local data, err, err_msg
-        if pipe_log ~= nil then
-            rpc_logging.reset_start(pipe_log)
+        rpc_logging.reset_start(log)
 
-            data, err, err_msg = pobj:read_pipe(ident)
+        local data, err, err_msg = pobj:read_pipe(ident)
 
-            rpc_logging.set_err(pipe_log, err)
-            rpc_logging.incr_stat(pipe_log, 'downstream', 'sendbody', #(data or ''))
-        else
-            data, err, err_msg = pobj:read_pipe(ident)
-        end
+        rpc_logging.set_err(log, err)
+        rpc_logging.incr_stat(log, 'upstream', 'recvbody', #(data or ''))
 
         if err ~= nil then
             return nil, err, err_msg
@@ -83,8 +80,13 @@ local function write_data_to_ngx(pobj, ident, opts)
 
         ret.size = ret.size + #data
 
+        rpc_logging.reset_start(log)
+
         ngx.print(data)
         local _, err = ngx.flush(true)
+
+        rpc_logging.set_err(log, err)
+        rpc_logging.incr_stat(log, 'downstream', 'sendbody', #(data or ''))
         if err then
             return nil, 'ClientAborted', err
         end
