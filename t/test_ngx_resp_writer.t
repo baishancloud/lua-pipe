@@ -29,8 +29,8 @@ __DATA__
             local status = 200
             local headers = {["Content-Length"]=3}
             local opts = {range ={}}
-            opts.range["start"] = 2
-            opts.range["end"] = 4
+            opts.range["from"] = 2
+            opts.range["to"] = 4
 
             local writers = {pipe_pipe.writer.make_ngx_resp_writer(status, headers, opts)}
 
