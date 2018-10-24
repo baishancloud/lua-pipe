@@ -31,6 +31,7 @@ __DATA__
             local opts = {range ={}}
             opts.range["from"] = 2
             opts.range["to"] = 4
+            opts.body_sha1 = "35139ef894b28b73bea022755166a23933c7d9cb"
 
             local writers = {pipe_pipe.writer.make_ngx_resp_writer(status, headers, opts)}
 

@@ -4,6 +4,8 @@ local tableutil = require("acid.tableutil")
 local rpc_logging = require("acid.rpc_logging")
 local acid_setutil = require("acid.setutil")
 local s3_client = require('resty.aws_s3.client')
+local hashlib = require("acid.hashlib")
+local resty_string = require("resty.string")
 local aws_chunk_writer = require("resty.aws_chunk.writer")
 
 local _M = { _VERSION = '1.0' }
@@ -42,6 +44,12 @@ local function write_data_to_ngx(pobj, ident, opts)
         end
     end
 
+    local alg_sha1 = nil
+
+    if opts.body_sha1 ~= nil then
+        alg_sha1 = hashlib:sha1()
+    end
+
     while true do
         rpc_logging.reset_start(log)
 
@@ -55,6 +63,12 @@ local function write_data_to_ngx(pobj, ident, opts)
         end
 
         if data == '' then
+            if alg_sha1 ~= nil then
+                local calc_sha1 = resty_string.to_hex(alg_sha1:final())
+                if calc_sha1 ~= opts.body_sha1 then
+                    return nil, "Sha1Notmatched", to_str("expect:", opts.sha1, ", actual:", calc_sha1)
+                end
+            end
             break
         end
 
@@ -79,6 +93,10 @@ local function write_data_to_ngx(pobj, ident, opts)
         end
 
         ret.size = ret.size + #data
+
+        if alg_sha1 ~= nil then
+            alg_sha1:update(data)
+        end
 
         rpc_logging.reset_start(log)
 
