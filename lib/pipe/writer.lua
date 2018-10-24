@@ -66,7 +66,7 @@ local function write_data_to_ngx(pobj, ident, opts)
             if alg_sha1 ~= nil then
                 local calc_sha1 = resty_string.to_hex(alg_sha1:final())
                 if calc_sha1 ~= opts.body_sha1 then
-                    return nil, "Sha1Notmatched", to_str("expect:", opts.sha1, ", actual:", calc_sha1)
+                    return nil, "Sha1Notmatched", to_str("expect:", opts.body_sha1, ", actual:", calc_sha1)
                 end
             end
             break
