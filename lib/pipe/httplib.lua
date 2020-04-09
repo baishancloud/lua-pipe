@@ -165,10 +165,12 @@ function _M.loop_http_write(pobj, ident, http)
             break
         end
 
+        local now = ngx.now()
         local _, err_code, err_msg = http:send_body(data)
-        if err_code ~= nil then
-            return nil, err_code, err_msg
-        end
+
+        ngx.update_time()
+        pobj:incr_stat(ident, "write_size", #data)
+        pobj:incr_stat(ident, "write_time", ngx.now()-now)
 
         bytes = bytes + #data
     end

@@ -61,4 +61,47 @@ function _M.make_read_max_size_filter(max_size, r_idx)
     end
 end
 
+function _M.make_kill_low_write_speed_filter(pobj, assert_func, quorum)
+    local all_stat = pobj:get_stat()
+
+    return function(rbufs, n_rd, wbufs, n_wrt, pipe_rst)
+        local ok_stat, n_ok = {}, 0
+        for idx, wrt_rst in pairs(pipe_rst.write_result) do
+            if wrt_rst.err == nil then
+                local ident = pobj.wrt_cos[idx].ident
+                local id_stat = all_stat[ident] or {}
+
+                if id_stat.write_time ~= nil and id_stat.write_size ~= nil then
+                    ok_stat[ident] = {
+                       write_size = id_stat.write_size,
+                       write_time = id_stat.write_time,
+                   }
+                   n_ok = n_ok + 1
+               end
+           end
+       end
+
+       if n_ok <= quorum then
+           return nil, nil, nil
+       end
+
+       for ident, st in pairs(ok_stat) do
+            local cur_speed = st.write_size/(math.max(st.write_time * 1000, 1)/1000)
+
+            if assert_func(ok_stat, ident, st, cur_speed) then
+                local err = {
+                    err_code = "WriteSlow",
+                    err_msg = to_str(ident, " coroutine write slow, speed:",
+                        strutil.placeholder(cur_speed/1024, '-', '%.3f'), "kb/s"),
+                }
+
+                pobj.wrt_cos[ident].err = err
+                ngx.log(ngx.ERR, to_str("slow coroutine:", pobj.wrt_cos[ident], ", error:", err))
+
+                break
+            end
+        end
+    end
+end
+
 return _M

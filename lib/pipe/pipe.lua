@@ -255,9 +255,30 @@ function _M.new(_, rds, wrts, filters, rd_timeout, wrt_timeout)
 
         rd_timeout = (rd_timeout or READ_TIMEOUT)/1000,
         wrt_timeout = (wrt_timeout or WRITE_TIMEOUT)/1000,
+        stat = {},
     }
 
     return setmetatable(obj, mt)
+end
+
+function _M.set_stat(self, ident, key, val)
+    self.stat[ident] = self.stat[ident] or {}
+    self.stat[ident][key] = val
+
+    return val
+end
+
+function _M.incr_stat(self, ident, key, val)
+    self.stat[ident] = self.stat[ident] or {}
+
+    local prev = self.stat[ident][key] or 0
+    self.stat[ident][key] = prev + val
+
+    return self.stat[ident][key]
+end
+
+function _M.get_stat(self)
+    return self.stat
 end
 
 function _M.write_pipe(pobj, ident, buf)
@@ -365,6 +386,22 @@ function _M.pipe(self, is_running, quorum_return)
     kill_coroutines(self.rd_cos, self.wrt_cos)
 
     return get_pipe_result(self)
+end
+
+function _M.add_read_filter(self, flt)
+    if flt == nil then
+        return
+    end
+
+    table.insert(self.rd_filters, flt)
+end
+
+function _M.add_write_filter(self, flt)
+    if flt == nil then
+        return
+    end
+
+    table.insert(self.wrt_filters, flt)
 end
 
 return _M
