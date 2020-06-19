@@ -153,7 +153,7 @@ function _M.test_pipe_empty_reader()
     local check_filter = make_check_err_filter('r', 1, 'ReadTimeout', 'TestSuccess')
 
     local cpipe, err_code, err_msg = pipe_pipe:new({empty_reader},
-         {memery_writer}, {rd_filters = {check_filter}}, 2)
+         {memery_writer}, {rd_filters = {check_filter}}, 2000)
     if err_code ~= nil then
         return nil, err_code, err_msg
     end
@@ -331,13 +331,13 @@ end
 function _M.test_pipe_read_timeout()
     local read_datas = {'xxx', 'yyy', 'zzz'}
 
-    local rd_timeout = 2
-    local wrt_timeout = 3
+    local rd_timeout = 2000
+    local wrt_timeout = 3000
 
     local timeout_reader = function(pobj, ident)
         for i, buf in ipairs(read_datas) do
             if i > 1 then
-                ngx.sleep(rd_timeout)
+                ngx.sleep(rd_timeout/1000)
             end
 
             local _, err_code, err_msg = pobj:write_pipe(ident, buf)
@@ -375,15 +375,15 @@ end
 function _M.test_pipe_write_timeout()
     local read_datas = {'xxx', 'yyy', 'zzz'}
 
-    local rd_timeout = 3
-    local wrt_timeout = 2
+    local rd_timeout = 3000
+    local wrt_timeout = 2000
 
     local timeout_writer = function(pobj, ident)
         local n_write = 0
         while true do
             n_write = n_write + 1
             if n_write > 1 then
-                ngx.sleep(wrt_timeout + 2)
+                ngx.sleep(wrt_timeout/1000 + 2)
             end
             local data, err_code, err_msg = pobj:read_pipe(ident)
             if err_code ~= nil then
@@ -423,6 +423,57 @@ function _M.test_pipe_write_timeout()
     local rst, err_code, err_msg = cpipe:pipe(is_running)
     if err_code ~= 'WriteTimeout' then
         return nil, 'TestWriteTimeout', tostring(err_code) .. ':'.. tostring(err_msg)
+    end
+end
+
+function _M.test_pipe_async_wait()
+    local read_datas = 'xxx'
+
+    local rd_timeout = 3000
+    local wrt_timeout = 2000
+
+    local writer = function(pobj, ident)
+        while true do
+            local data, err_code, err_msg = pobj:read_pipe(ident)
+            if err_code ~= nil then
+                return nil, err_code, err_msg
+            end
+
+            if data == '' then
+                break
+            end
+        end
+
+        ngx.sleep(0.3)
+
+        if ident == 1 then
+            ngx.sleep(wrt_timeout/1000 + 2)
+            return nil, 'WriterError', 'writer 1 error'
+        elseif ident == 2 then
+            return nil, 'WriterError', 'writer 2 error'
+        end
+    end
+
+
+    local cpipe, err_code, err_msg = pipe_pipe:new(
+                        {pipe_pipe.reader.make_memery_reader(read_datas)},
+                        {writer, writer, writer},
+                        {},
+                        rd_timeout, wrt_timeout)
+
+    if err_code ~= nil then
+        return nil, err_code, err_msg
+    end
+
+    local t0 = ngx.now()
+
+    cpipe:pipe(is_running, 3)
+
+    ngx.update_time()
+    local itv = ngx.now() - t0
+
+    if itv > 1 then
+        return nil, 'TestAsyncWait', 'test async error'
     end
 end
 

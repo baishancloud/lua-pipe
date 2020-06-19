@@ -13,8 +13,8 @@ _M.writer = pipe_writer
 _M.filter = pipe_filter
 
 local to_str = strutil.to_str
-local READ_TIMEOUT = 300 --seconds
-local WRITE_TIMEOUT = 300 --seconds
+local READ_TIMEOUT = 600 * 1000 --ms
+local WRITE_TIMEOUT = 600 * 1000 --ms
 
 local function wrap_co_func(co, ...)
     local ok, rst, err_code, err_msg = pcall(co.func, ...)
@@ -30,7 +30,7 @@ local function wrap_co_func(co, ...)
             err_code, err_msg = 'CoroutineError', rst
         end
         co.err = {err_code = err_code, err_msg = err_msg}
-        ngx.log(ngx.ERR, to_str(co.rd_or_wrt, " coroutine exit with error:", co.err))
+        ngx.log(ngx.ERR, to_str(co.rd_or_wrt, ' ', co.ident, " coroutine exit with error:", co.err))
     end
 
     co.is_dead = true
@@ -175,17 +175,24 @@ local function async_wait_co_sema(self, cos, sema, quorum, timeout, err_code)
 
     while ngx.now() <= dead_time do
         local n_ok = 0
+        local n_active = 0
 
         for _, co in ipairs(cos) do
             if co.is_dead then
                 if co.err == nil then
                     n_ok = n_ok + 1
                 end
+            else
+                n_active = n_active + 1
             end
         end
 
         if n_ok >= quorum then
             return
+        end
+
+        if n_active + n_ok < quorum then
+            break
         end
 
         ngx.sleep(0.001)
@@ -246,11 +253,32 @@ function _M.new(_, rds, wrts, filters, rd_timeout, wrt_timeout)
         wrt_filters = filters.wrt_filters
             or {pipe_filter.make_write_quorum_filter(#wrts)},
 
-        rd_timeout = rd_timeout or READ_TIMEOUT,
-        wrt_timeout = wrt_timeout or WRITE_TIMEOUT,
+        rd_timeout = (rd_timeout or READ_TIMEOUT)/1000,
+        wrt_timeout = (wrt_timeout or WRITE_TIMEOUT)/1000,
+        stat = {},
     }
 
     return setmetatable(obj, mt)
+end
+
+function _M.set_stat(self, ident, key, val)
+    self.stat[ident] = self.stat[ident] or {}
+    self.stat[ident][key] = val
+
+    return val
+end
+
+function _M.incr_stat(self, ident, key, val)
+    self.stat[ident] = self.stat[ident] or {}
+
+    local prev = self.stat[ident][key] or 0
+    self.stat[ident][key] = prev + val
+
+    return self.stat[ident][key]
+end
+
+function _M.get_stat(self)
+    return self.stat
 end
 
 function _M.write_pipe(pobj, ident, buf)
@@ -358,6 +386,22 @@ function _M.pipe(self, is_running, quorum_return)
     kill_coroutines(self.rd_cos, self.wrt_cos)
 
     return get_pipe_result(self)
+end
+
+function _M.add_read_filter(self, flt)
+    if flt == nil then
+        return
+    end
+
+    table.insert(self.rd_filters, flt)
+end
+
+function _M.add_write_filter(self, flt)
+    if flt == nil then
+        return
+    end
+
+    table.insert(self.wrt_filters, flt)
 end
 
 return _M
