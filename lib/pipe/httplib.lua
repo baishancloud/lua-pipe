@@ -49,7 +49,9 @@ function _M.connect_http(ips, port, verb, uri, opts)
 
     if err_code ~= nil then
         err_msg  = to_str(err_code, ':', err_msg)
-        err_code = 'ConnectError'
+        if tonumber(opts.return_original_err) ~= 1 then
+            err_code = 'ConnectError'
+        end
     end
 
     return nil, err_code, err_msg
