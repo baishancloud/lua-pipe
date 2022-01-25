@@ -101,6 +101,10 @@ local function write_data_to_ngx(pobj, ident, opts)
             end
         end
 
+        if opts.bandwidth_cb ~= nil then
+            opts.bandwidth_cb(#data)
+        end
+
         rpc_logging.reset_start(log)
 
         ngx.print(data)
